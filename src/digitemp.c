@@ -204,6 +204,7 @@ void usage()
   printf("                -c digitemp.conf              Configuration File\n");
   printf("                -r 1000                       Read delay in mS\n");
   printf("                -v                            Verbose output\n");
+  printf("                -p                            Switch to pressure mode\n");
   printf("                -t 0                          Read Sensor #\n");
   printf("                -q                            No Copyright notice\n");
   printf("                -a                            Read all Sensors\n");
@@ -655,6 +656,52 @@ int log_counter( int sensor, int page, unsigned long counter, unsigned char *sn 
 
   return 0;
 }
+
+/* -----------------------------------------------------------------------
+   Log one line of text to the logfile with the current date and time
+
+   Used with temperatures
+   ----------------------------------------------------------------------- */
+int log_pressure( int sensor, double temp_c, int pressure, unsigned char *sn )
+{
+  char	temp[1024],
+  	time_format[160];
+  time_t	mytime;
+
+
+  mytime = time(NULL);
+  if( mytime )
+  {
+    /* Log the temperature */
+    switch( log_type )
+    {
+      /* Multiple Centigrade temps per line */
+      case 2:     sprintf( temp, "\t%3.2f", temp_c );
+                  break;
+
+      /* Multiple Fahrenheit temps per line */
+      case 3:     sprintf( temp, "\t%3.2f", c2f(temp_c) );
+                  break;
+
+      default:
+                  /* Build the time format string from log_format */
+                  build_tf( time_format, humidity_format, sensor, temp_c, pressure, sn );
+
+                  /* Handle the time format tokens */
+                  strftime( temp, 1024, time_format, localtime( &mytime ) );
+
+                  strcat( temp, "\n" );
+                  break;
+    }
+  } else {
+    sprintf( temp, "Time Error\n" );
+  }
+  /* Log it to stdout, logfile or both */
+  log_string( temp );
+
+  return 0;
+}
+
 
 
 /* -----------------------------------------------------------------------
@@ -1204,6 +1251,61 @@ int read_ds2438( int sensor_family, int sensor )
   return FALSE;
 }
 
+// pressure sensor implementation...
+int read_pressure( int sensor_family, int sensor ) {
+  double	temp_c;			/* Converted temperature in degrees C */
+  float		sup_voltage,		/* Supply voltage in volts            */
+		pressure_voltage,	/* Pressure sensor voltage in volts   */
+		pressure;		/* Calculated humidity in %RH         */
+  unsigned char	TempSN[8];
+  int		try;  
+	
+  for( try = 0; try < MAX_READ_TRIES; try++ )
+  {
+    /* Read Vdd, the supply voltage */
+    if( (sup_voltage = Volt_Reading(0, 1, NULL)) != -1.0 )
+    {
+      /* Read A/D reading from the pressure sensor */
+      if( (pressure_voltage = Volt_Reading(0, 0, NULL)) != -1.0 )
+      {
+	
+	pressure = 0;
+	printf("Our pressure voltage is: %0.2f\n", pressure_voltage);
+	
+	
+	// voltage table taken from D6F-P0010A documentation...
+	if (pressure_voltage < 0.50) {
+	  pressure = -1;
+	} else if (pressure_voltage >= 0.4 && pressure_voltage <= 0.6) {
+	  pressure = 0.0;
+	} else if (pressure_voltage >= 1.5 && pressure_voltage <= 1.7) {
+	  pressure = 0.25;
+	} else if (pressure_voltage >= 2.0 && pressure_voltage <= 2.2) {
+	  pressure = 0.5;
+	} else if (pressure_voltage >= 2.21 && pressure_voltage <= 2.41) {
+	  pressure = 0.75;
+	} else if (pressure_voltage >= 2.40 && pressure_voltage <= 2.60) {
+	  pressure = 1;
+	}
+	
+	/* Read the temperature */
+        temp_c = Get_Temperature(0);
+       
+        /* Log the temperature and humidity */
+        owSerialNum( 0, &TempSN[0], TRUE );
+        log_pressure( sensor, temp_c, pressure, TempSN );
+
+        /* Good conversion finished */
+        return TRUE;
+      }
+    }
+
+    owTouchReset(0);
+    msDelay(read_time);
+  }
+
+  return FALSE;
+}
 
 /* -----------------------------------------------------------------------
    (This routine is modified from code by Eric Wilde)
@@ -1267,6 +1369,10 @@ int read_humidity( int sensor_family, int sensor )
       /* Read A/D reading from the humidity sensor */
       if( (hum_voltage = Volt_Reading(0, 0, NULL)) != -1.0 )
       {
+	
+	printf("Our sup voltage is: %0.2f\n", sup_voltage);
+	printf("Our hum voltage is: %0.2f\n", hum_voltage);
+	
         /* Read the temperature */
         temp_c = Get_Temperature(0);
 
@@ -1508,9 +1614,13 @@ int read_device( struct _roms *sensor_list, int sensor )
       	}}
 		if( opts & OPT_DS2438 )
 		{
-			status = read_ds2438( sensor_family, sensor );
+		    status = read_ds2438( sensor_family, sensor );
 		} else {
-			status = read_humidity( sensor_family, sensor );
+		    if (opts & OPT_PRESSURE) { 
+		      status = read_pressure( sensor_family, sensor );
+		    } else {
+		      status = read_humidity( sensor_family, sensor );
+		    }
 		}
 		break;
   }
@@ -2463,7 +2573,7 @@ int main( int argc, char *argv[] )
   strcpy( counter_format, "%b %d %H:%M:%S Sensor %s #%n %C" );
   strcpy( humidity_format, "%b %d %H:%M:%S Sensor %s C: %.2C F: %.2F H: %h%%" );
   strcpy( conf_file, ".digitemprc" );
-  strcpy( option_list, "?ThqiaAvwr:f:s:l:t:d:n:o:c:O:H:" );
+  strcpy( option_list, "?ThqiapAvwr:f:s:l:t:d:n:o:c:O:H:" );
 
 
   /* Command line options override any .digitemprc options temporarily	*/
@@ -2532,6 +2642,10 @@ int main( int argc, char *argv[] )
 		  num_samples = atoi(optarg);
 		}
 		break;
+		
+		  /* enable pressure mode */
+      /*case 'p': opts |= OPT_PRESSURE;         
+	        break; */
 
       case 'A': opts |= OPT_DS2438;		/* Treat DS2438 as A/D converter */
       		break;

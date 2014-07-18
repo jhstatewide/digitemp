@@ -31,6 +31,7 @@
 #define OPT_DS2438   0x0040
 #define OPT_SORT     0x0080
 #define OPT_TEST     0x0100
+#define OPT_PRESSURE 0x0200
 
 
 /* Family codes for supported devices */
