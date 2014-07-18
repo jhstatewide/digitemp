@@ -169,6 +169,7 @@ char serial_port[40],                        /* Path to the serial port */
      counter_format[80],                     /* Format for counter readings		*/
      tmp_counter_format[80],
      humidity_format[80],			/* Format for Humidity readings		*/
+     pressure_format[80],
      tmp_humidity_format[80],
      conf_file[1024],			/* Configuration File      */
      option_list[40];
@@ -288,7 +289,7 @@ float c2f( float temp )
    If humidity is <0 then it is invalid
    ----------------------------------------------------------------------- */
 int build_tf( char *time_format, char *format, int sensor, 
-              float temp_c, int humidity, unsigned char *sn )
+              float temp_c, float humidity, unsigned char *sn )
 {
   char	*tf_ptr,
   	*lf_ptr,
@@ -341,6 +342,20 @@ int build_tf( char *time_format, char *format, int sensor,
 	        
 	        /* Pass it through sprintf */
 	        sprintf( temp, token, sensor );
+
+		/* Insert this into the time format string */
+		tk_ptr = temp;
+		while( *tk_ptr )
+		  *tf_ptr++ = *tk_ptr++;
+        	break;
+		
+	case 'p' :
+	  	/* Pressure flow % */
+	        /* Change the specifier to a f */
+	        *(tk_ptr-1) = 'f';
+	        
+	        /* Pass it through sprintf */
+	        sprintf( temp, token, humidity );
 
 		/* Insert this into the time format string */
 		tk_ptr = temp;
@@ -662,7 +677,7 @@ int log_counter( int sensor, int page, unsigned long counter, unsigned char *sn 
 
    Used with temperatures
    ----------------------------------------------------------------------- */
-int log_pressure( int sensor, double temp_c, int pressure, unsigned char *sn )
+int log_pressure( int sensor, double temp_c, float pressure, unsigned char *sn )
 {
   char	temp[1024],
   	time_format[160];
@@ -685,7 +700,7 @@ int log_pressure( int sensor, double temp_c, int pressure, unsigned char *sn )
 
       default:
                   /* Build the time format string from log_format */
-                  build_tf( time_format, humidity_format, sensor, temp_c, pressure, sn );
+                  build_tf( time_format, pressure_format, sensor, temp_c, pressure, sn );
 
                   /* Handle the time format tokens */
                   strftime( temp, 1024, time_format, localtime( &mytime ) );
@@ -1269,24 +1284,7 @@ int read_pressure( int sensor_family, int sensor ) {
       if( (pressure_voltage = Volt_Reading(0, 0, NULL)) != -1.0 )
       {
 	
-	pressure = 0;
-	printf("Our pressure voltage is: %0.2f\n", pressure_voltage);
-	
-	
-	// voltage table taken from D6F-P0010A documentation...
-	if (pressure_voltage < 0.50) {
-	  pressure = -1;
-	} else if (pressure_voltage >= 0.4 && pressure_voltage <= 0.6) {
-	  pressure = 0.0;
-	} else if (pressure_voltage >= 1.5 && pressure_voltage <= 1.7) {
-	  pressure = 0.25;
-	} else if (pressure_voltage >= 2.0 && pressure_voltage <= 2.2) {
-	  pressure = 0.5;
-	} else if (pressure_voltage >= 2.21 && pressure_voltage <= 2.41) {
-	  pressure = 0.75;
-	} else if (pressure_voltage >= 2.40 && pressure_voltage <= 2.60) {
-	  pressure = 1;
-	}
+	pressure = pressure_voltage;
 	
 	/* Read the temperature */
         temp_c = Get_Temperature(0);
@@ -1369,9 +1367,6 @@ int read_humidity( int sensor_family, int sensor )
       /* Read A/D reading from the humidity sensor */
       if( (hum_voltage = Volt_Reading(0, 0, NULL)) != -1.0 )
       {
-	
-	printf("Our sup voltage is: %0.2f\n", sup_voltage);
-	printf("Our hum voltage is: %0.2f\n", hum_voltage);
 	
         /* Read the temperature */
         temp_c = Get_Temperature(0);
@@ -2572,6 +2567,7 @@ int main( int argc, char *argv[] )
   strcpy( temp_format, "%b %d %H:%M:%S Sensor %s C: %.2C F: %.2F" );
   strcpy( counter_format, "%b %d %H:%M:%S Sensor %s #%n %C" );
   strcpy( humidity_format, "%b %d %H:%M:%S Sensor %s C: %.2C F: %.2F H: %h%%" );
+  strcpy( pressure_format, "%b %d %H:%M:%S Sensor %s C: %.2C F: %.2F P: %p LPM" );
   strcpy( conf_file, ".digitemprc" );
   strcpy( option_list, "?ThqiapAvwr:f:s:l:t:d:n:o:c:O:H:" );
 
@@ -2643,9 +2639,9 @@ int main( int argc, char *argv[] )
 		}
 		break;
 		
-		  /* enable pressure mode */
-      /*case 'p': opts |= OPT_PRESSURE;         
-	        break; */
+      /* enable pressure mode */
+      case 'p': opts |= OPT_PRESSURE;         
+	        break; 
 
       case 'A': opts |= OPT_DS2438;		/* Treat DS2438 as A/D converter */
       		break;

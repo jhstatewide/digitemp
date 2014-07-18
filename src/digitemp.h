@@ -90,8 +90,7 @@ struct _coupler {
 void usage();
 void free_coupler();
 float c2f( float temp );
-int build_tf( char *time_format, char *format, int sensor, 
-              float temp_c, int humidity, unsigned char *sn );
+int build_tf( char* time_format, char* format, int sensor, float temp_c, float humidity, unsigned char* sn );
 int build_cf( char *time_format, char *format, int sensor, int page,
               unsigned long count, unsigned char *sn );
 int log_string( char *line );
